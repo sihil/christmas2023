@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Optional, Callable, List, Tuple, Dict
 from xml.etree import ElementTree
 import random
@@ -5,7 +6,7 @@ import random
 import py5
 
 
-Instruction = Tuple[Callable[..., ...], List]
+Instruction = Tuple[Callable[..., ...], List, Dict]
 
 
 class Board:
@@ -13,12 +14,35 @@ class Board:
         self._instructions: List[Instruction] = []
 
     def d(self, func: Callable[..., ...], *args, **kwargs):
-        self._instructions.append((func, list(args)))
+        self._instructions.append((func, list(args), kwargs))
 
     @property
     def instructions(self) -> List[Instruction]:
         return self._instructions
 
+    def print_instructions(self):
+        for instruction in self._instructions:
+            print(instruction)
+
+
+@dataclass
+class Curve:
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    x3: float
+    y3: float
+    x4: float
+    y4: float
+
+    def as_list(self):
+        return [self.x1, self.y1, self.x2, self.y2, self.x3, self.y3, self.x4, self.y4]
+
+    def point_at(self, t) -> Tuple[float, float]:
+        x = py5.curve_point(self.x1, self.x2, self.x3, self.x4, t)
+        y = py5.curve_point(self.y1, self.y2, self.y3, self.y4, t)
+        return x, y
 
 
 def combine_svgs(layers, new_svg):
@@ -56,12 +80,37 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
     # convert angle to radians
     branch_angle = py5.radians(angle_degrees)
     print("draw_branch", branch_x, branch_y, length, branch_angle)
+
     # draw the branch
-    board.d(py5.line,
-            branch_x,
-            branch_y,
-            branch_x + length * py5.cos(branch_angle),
-            branch_y + length * py5.sin(branch_angle))
+
+    # draw a branch as a slight curve
+    # how much of a curve do we want?
+    # 0.0 = straight, 1.2 = very curvy
+    angle_with_zero_top = (angle_degrees + 90) % 360
+    degrees_from_up = angle_with_zero_top if angle_with_zero_top < 180 else 360 - angle_with_zero_top
+    max_curvy = 0.6 * (degrees_from_up / 180) + 0.6
+    curvy_amount = py5.random(0.05, max_curvy)
+
+    # figure out the direction of curve
+    # typically branches on the left (angle_with_zero_top 180-360) will curve to the right and vice versa
+    # curving to the right will happen with a positive curvy_amount
+    if angle_with_zero_top < 180:
+        curvy_amount = -curvy_amount
+
+    curve = Curve(
+        branch_x - length * py5.cos(branch_angle-curvy_amount),
+        branch_y - length * py5.sin(branch_angle-curvy_amount),
+        branch_x,
+        branch_y,
+        branch_x + length * py5.cos(branch_angle),
+        branch_y + length * py5.sin(branch_angle),
+        branch_x + 2 * length * py5.cos(branch_angle+curvy_amount),
+        branch_y + 2 * length * py5.sin(branch_angle+curvy_amount)
+    )
+
+    board.d(py5.curve,
+            *curve.as_list(),
+            notes=f'curviness: {curvy_amount:.2f} angle: {angle_degrees:.2f} angle_with_zero_top: {angle_with_zero_top:.2f} degrees_from_up: {degrees_from_up:.2f}')
 
     # now draw a series of needles along the branch
 
@@ -131,8 +180,9 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
         print(f"needle_start_distance={needle_start_distance:.2f} left={left} branch_angle={branch_angle:.2f} needle_angle_rads={needle_angle_rads:.2f}")
 
         # x,y coords of perfect needle start
-        needle_x = branch_x + needle_start_distance * py5.cos(branch_angle)
-        needle_y = branch_y + needle_start_distance * py5.sin(branch_angle)
+        needle_x, needle_y = curve.point_at(needle_start_distance / length)
+        # needle_x = branch_x + needle_start_distance * py5.cos(branch_angle)
+        # needle_y = branch_y + needle_start_distance * py5.sin(branch_angle)
 
         # now we need to adjust the needle start point to account for looseness
         actual_needle_x = needle_x + looseness * needle_length/3 * py5.cos(needle_angle_rads)
@@ -147,12 +197,6 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
 
         # now set up for next needle to be on other side
         left = not left
-
-
-def draw_helper(instruction_list: List[Instruction]):
-    def d(func: Callable[..., ...], *args, **kwargs):
-        instruction_list.append((func, list(args)))
-    return d
 
 
 def draw_tree(board: Board, x, y, width, height):
@@ -193,11 +237,13 @@ def draw():
     board = Board()
 
     board.d(py5.begin_record, py5.SVG, 'tree.svg')
+    board.d(py5.no_fill)
     draw_tree(board,50, 50, 200, 500)
     board.d(py5.end_record)
 
+    board.print_instructions()
+
     for instruction in board.instructions:
-        print(f"executing {instruction}")
         instruction[0](*instruction[1])
     # draw_branch(150, 150, 100, 10, needle_density=16, staggering=0)
     # draw_branch(150, 150, 100, 50, needle_density=12, staggering=0)
