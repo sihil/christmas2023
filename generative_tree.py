@@ -44,6 +44,11 @@ class Curve:
         y = py5.curve_point(self.y1, self.y2, self.y3, self.y4, t)
         return x, y
 
+    def angle_at(self, t) -> float:
+        tx = py5.curve_tangent(self.x1, self.x2, self.x3, self.x4, t)
+        ty = py5.curve_tangent(self.y1, self.y2, self.y3, self.y4, t)
+        return py5.atan2(ty, tx)
+
 
 def combine_svgs(layers, new_svg):
     py5.begin_record(py5.SVG, new_svg)
@@ -161,39 +166,51 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
 
     print(f'needle_starts {["{0:0.2f}".format(i) for i in needle_starts]}')
 
-    # needle angles
-    left_angle = py5.radians(angle_degrees - random.randint(30, 50))
-    right_angle = py5.radians(angle_degrees + random.randint(30, 50))
+    # needle angle offset from branch angle (30º to 50º)
+    left_angle = py5.radians(random.randint(30, 50))
+    right_angle = py5.radians(random.randint(30, 50))
 
     # how loose will this branch be?
     # 0.0 = tight, 1.0 = loose
     # this will determine whether the needles are actually drawn from the branch or whether there is a gap
     looseness = py5.random(0.3, 1.0)
 
+    base_needle_curviness = py5.random(0.0, 0.5)
+
     # decide if we're starting  on the left or right side
     left = bool(py5.random_int(0, 1))
 
     for needle_start_distance in needle_starts:
-        # decide if we're on the left or right side
-        needle_angle_rads = left_angle if left else right_angle
-
-        print(f"needle_start_distance={needle_start_distance:.2f} left={left} branch_angle={branch_angle:.2f} needle_angle_rads={needle_angle_rads:.2f}")
+        # calculate the needle angle
+        branch_angle_at_needle_start = curve.angle_at(needle_start_distance / length)
+        needle_angle_rads = branch_angle_at_needle_start - left_angle if left \
+            else branch_angle_at_needle_start + right_angle
 
         # x,y coords of perfect needle start
         needle_x, needle_y = curve.point_at(needle_start_distance / length)
-        # needle_x = branch_x + needle_start_distance * py5.cos(branch_angle)
-        # needle_y = branch_y + needle_start_distance * py5.sin(branch_angle)
 
         # now we need to adjust the needle start point to account for looseness
         actual_needle_x = needle_x + looseness * needle_length/3 * py5.cos(needle_angle_rads)
         actual_needle_y = needle_y + looseness * needle_length/3 * py5.sin(needle_angle_rads)
 
+        needle_curviness = base_needle_curviness + py5.random(0.0, 0.1)
+        if left:
+            needle_curviness = -needle_curviness
+
+        needle_curve = Curve(
+            actual_needle_x - needle_length * py5.cos(needle_angle_rads-needle_curviness),
+            actual_needle_y - needle_length * py5.sin(needle_angle_rads-needle_curviness),
+            actual_needle_x,
+            actual_needle_y,
+            actual_needle_x + needle_length * py5.cos(needle_angle_rads),
+            actual_needle_y + needle_length * py5.sin(needle_angle_rads),
+            actual_needle_x + 2 * needle_length * py5.cos(needle_angle_rads+needle_curviness),
+            actual_needle_y + 2 * needle_length * py5.sin(needle_angle_rads+needle_curviness)
+        )
+
         # draw the needle
-        board.d(py5.line,
-                actual_needle_x,
-                actual_needle_y,
-                actual_needle_x + needle_length * py5.cos(needle_angle_rads),
-                actual_needle_y + needle_length * py5.sin(needle_angle_rads))
+        board.d(py5.curve,
+                *needle_curve.as_list())
 
         # now set up for next needle to be on other side
         left = not left
@@ -221,8 +238,10 @@ def draw_tree(board: Board, x, y, width, height):
     top_branch_length = typical_branch_length(0)
 
     draw_branch(board, top_x, top_y+top_branch_length, top_branch_length, 270)
-    draw_branch(board, top_x-10, top_y+top_branch_length+20, top_branch_length-10, 270-50)
-    draw_branch(board, top_x+10, top_y+top_branch_length+20, top_branch_length-10, 270+50)
+    draw_branch(board, top_x, top_y+top_branch_length+3, top_branch_length-10, 270-50)
+    draw_branch(board, top_x, top_y+top_branch_length, top_branch_length-10, 270+50)
+
+    draw_branch(board, middle_base_x, middle_base_y-40, typical_branch_length(middle_base_y), 30)
 
 
 def settings():
