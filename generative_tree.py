@@ -46,10 +46,10 @@ def combine_svgs(layers, new_svg):
 
 
 # draw a branch of a tree
-def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_density: Optional[int] = None,
+def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_density: Optional[float] = None,
                 staggering: Optional[float] = None):
     if needle_density is None:
-        needle_density = py5.random_int(4, 8)
+        needle_density = py5.random(4.5, 6.0)
     if staggering is None:
         staggering = py5.random(0.1, 0.9)
 
@@ -73,7 +73,7 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
 
     # what portion of branch will there be before the first needle?
     # how long is a needle likely to be
-    needle_length = length / 6
+    needle_length = length / py5.random(4, 8)
     first_needle_distance = py5.random(0, length/4)
     last_needle_distance = length - py5.random(0, needle_length)
 
@@ -119,7 +119,7 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
     # how loose will this branch be?
     # 0.0 = tight, 1.0 = loose
     # this will determine whether the needles are actually drawn from the branch or whether there is a gap
-    looseness = py5.random(0.0, 1.0)
+    looseness = py5.random(0.3, 1.0)
 
     # decide if we're starting  on the left or right side
     left = bool(py5.random_int(0, 1))
