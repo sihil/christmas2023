@@ -116,6 +116,11 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
     left_angle = py5.radians(angle_degrees - random.randint(30, 50))
     right_angle = py5.radians(angle_degrees + random.randint(30, 50))
 
+    # how loose will this branch be?
+    # 0.0 = tight, 1.0 = loose
+    # this will determine whether the needles are actually drawn from the branch or whether there is a gap
+    looseness = py5.random(0.0, 1.0)
+
     # decide if we're starting  on the left or right side
     left = bool(py5.random_int(0, 1))
 
@@ -125,19 +130,20 @@ def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_
 
         print(f"needle_start_distance={needle_start_distance:.2f} left={left} branch_angle={branch_angle:.2f} needle_angle_rads={needle_angle_rads:.2f}")
 
-        # x,y coords of needle start
+        # x,y coords of perfect needle start
         needle_x = branch_x + needle_start_distance * py5.cos(branch_angle)
         needle_y = branch_y + needle_start_distance * py5.sin(branch_angle)
 
-        print()
+        # now we need to adjust the needle start point to account for looseness
+        actual_needle_x = needle_x + looseness * needle_length/3 * py5.cos(needle_angle_rads)
+        actual_needle_y = needle_y + looseness * needle_length/3 * py5.sin(needle_angle_rads)
 
         # draw the needle
-        print(needle_x, needle_y, needle_x + needle_length * py5.cos(needle_angle_rads), needle_y + needle_length * py5.sin(needle_angle_rads))
         board.d(py5.line,
-                needle_x,
-                needle_y,
-                needle_x + needle_length * py5.cos(needle_angle_rads),
-                needle_y + needle_length * py5.sin(needle_angle_rads))
+                actual_needle_x,
+                actual_needle_y,
+                actual_needle_x + needle_length * py5.cos(needle_angle_rads),
+                actual_needle_y + needle_length * py5.sin(needle_angle_rads))
 
         # now set up for next needle to be on other side
         left = not left
