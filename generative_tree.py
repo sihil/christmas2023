@@ -1,8 +1,24 @@
-from typing import Optional
+from typing import Optional, Callable, List, Tuple, Dict
 from xml.etree import ElementTree
 import random
 
 import py5
+
+
+Instruction = Tuple[Callable[..., ...], List]
+
+
+class Board:
+    def __init__(self):
+        self._instructions: List[Instruction] = []
+
+    def d(self, func: Callable[..., ...], *args, **kwargs):
+        self._instructions.append((func, list(args)))
+
+    @property
+    def instructions(self) -> List[Instruction]:
+        return self._instructions
+
 
 
 def combine_svgs(layers, new_svg):
@@ -30,17 +46,27 @@ def combine_svgs(layers, new_svg):
 
 
 # draw a branch of a tree
-def draw_branch(branch_x, branch_y, length, angle_degrees, needle_density=5, staggering=1.0):
+def draw_branch(board: Board, branch_x, branch_y, length, angle_degrees, needle_density: Optional[int] = None,
+                staggering: Optional[float] = None):
+    if needle_density is None:
+        needle_density = py5.random_int(4, 8)
+    if staggering is None:
+        staggering = py5.random(0.1, 0.9)
+
     # convert angle to radians
     branch_angle = py5.radians(angle_degrees)
     print("draw_branch", branch_x, branch_y, length, branch_angle)
     # draw the branch
-    py5.line(branch_x, branch_y, branch_x + length * py5.cos(branch_angle), branch_y + length * py5.sin(branch_angle))
+    board.d(py5.line,
+            branch_x,
+            branch_y,
+            branch_x + length * py5.cos(branch_angle),
+            branch_y + length * py5.sin(branch_angle))
 
     # now draw a series of needles along the branch
 
     # how many needles will there be?
-    needle_count = length // needle_density
+    needle_count = int(length // needle_density)
     needle_count_first_side = needle_count // 2 + needle_count % 2
     needle_count_second_side = needle_count - needle_count_first_side
     print(f"needle_count {needle_count} 1st={needle_count_first_side} 2nd={needle_count_second_side}")
@@ -107,14 +133,50 @@ def draw_branch(branch_x, branch_y, length, angle_degrees, needle_density=5, sta
 
         # draw the needle
         print(needle_x, needle_y, needle_x + needle_length * py5.cos(needle_angle_rads), needle_y + needle_length * py5.sin(needle_angle_rads))
-        py5.line(needle_x, needle_y, needle_x + needle_length * py5.cos(needle_angle_rads), needle_y + needle_length * py5.sin(needle_angle_rads))
+        board.d(py5.line,
+                needle_x,
+                needle_y,
+                needle_x + needle_length * py5.cos(needle_angle_rads),
+                needle_y + needle_length * py5.sin(needle_angle_rads))
 
         # now set up for next needle to be on other side
         left = not left
 
 
+def draw_helper(instruction_list: List[Instruction]):
+    def d(func: Callable[..., ...], *args, **kwargs):
+        instruction_list.append((func, list(args)))
+    return d
+
+
+def draw_tree(board: Board, x, y, width, height):
+    # draw the branches of a tree, we don't need to draw a trunk - leave that to the immagination
+    # essentially we want to draw the typical branches of a tree; starting in the middle and branching outwards
+    # towards the bottom of the tree the branches should be longer and more horizontal, towards the top they should
+    # be shorter and more vertical
+    # the entire bound of the three should be an isosceles triangle with the top point at the top of the tree
+    # and the base at the bottom of the tree
+    middle_base_x, middle_base_y = x + width / 2, y + height
+    top_x, top_y = x + width / 2, y
+    board.d(py5.text, "mb", middle_base_x, middle_base_y)
+    board.d(py5.text, "top", top_x, top_y)
+
+    def typical_branch_length(branch_y):
+        # branch_y is the distance from the top of the tree
+
+        # longer branches at the bottom, shorter branches at the top
+        # 0.1*height at top to 0.18*height at bottom
+        return 0.1 * height + 0.08 * height * (branch_y/height)
+
+    top_branch_length = typical_branch_length(0)
+
+    draw_branch(board, top_x, top_y+top_branch_length, top_branch_length, 270)
+    draw_branch(board, top_x-10, top_y+top_branch_length+20, top_branch_length-10, 270-50)
+    draw_branch(board, top_x+10, top_y+top_branch_length+20, top_branch_length-10, 270+50)
+
+
 def settings():
-    py5.size(300, 300)
+    py5.size(300, 600)
 
 
 def setup():
@@ -122,17 +184,24 @@ def setup():
 
 
 def draw():
-    py5.begin_record(py5.SVG, 'tree.svg')
-    draw_branch(150, 150, 100, 10, needle_density=16, staggering=0)
-    draw_branch(150, 150, 100, 50, needle_density=12, staggering=0)
-    draw_branch(150, 150, 100, 90, needle_density=8, staggering=0)
-    draw_branch(150, 150, 100, 130, needle_density=16, staggering=0.5)
-    draw_branch(150, 150, 100, 170, needle_density=12, staggering=0.5)
-    draw_branch(150, 150, 100, 210, needle_density=8, staggering=0.5)
-    draw_branch(150, 150, 100, 250, needle_density=16, staggering=1)
-    draw_branch(150, 150, 100, 290, needle_density=12, staggering=1)
-    draw_branch(150, 150, 100, 320, needle_density=8, staggering=1)
-    py5.end_record()
+    board = Board()
+
+    board.d(py5.begin_record, py5.SVG, 'tree.svg')
+    draw_tree(board,50, 50, 200, 500)
+    board.d(py5.end_record)
+
+    for instruction in board.instructions:
+        print(f"executing {instruction}")
+        instruction[0](*instruction[1])
+    # draw_branch(150, 150, 100, 10, needle_density=16, staggering=0)
+    # draw_branch(150, 150, 100, 50, needle_density=12, staggering=0)
+    # draw_branch(150, 150, 100, 90, needle_density=8, staggering=0)
+    # draw_branch(150, 150, 100, 130, needle_density=16, staggering=0.5)
+    # draw_branch(150, 150, 100, 170, needle_density=12, staggering=0.5)
+    # draw_branch(150, 150, 100, 210, needle_density=8, staggering=0.5)
+    # draw_branch(150, 150, 100, 250, needle_density=16, staggering=1)
+    # draw_branch(150, 150, 100, 290, needle_density=12, staggering=1)
+    # draw_branch(150, 150, 100, 320, needle_density=8, staggering=1)
 
     py5.exit_sketch()
 
