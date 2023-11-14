@@ -2,4 +2,4 @@ py5
 cairosvg
 vpype
 vpype-occult
-
+shapely
