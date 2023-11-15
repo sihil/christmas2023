@@ -15,20 +15,24 @@ def instr(func: Callable[..., ...], *args, **kwargs) -> Instruction:
 
 class Board:
     def __init__(self):
-        self._instructions: List[Instruction] = []
+        self._instructions: Dict[str, List[Instruction]] = {}
 
-    def d(self, func: Callable[..., ...], *args, **kwargs):
-        self._instructions.append((func, list(args), kwargs))
+    def d(self, layer: str, func: Callable[..., ...], *args, **kwargs):
+        self.instructions(layer).append((func, list(args), kwargs))
 
-    def ds(self, instructions: List[Instruction]):
-        self._instructions.extend(instructions)
+    def ds(self, layer: str, instructions: List[Instruction]):
+        self.instructions(layer).extend(instructions)
 
-    @property
-    def instructions(self) -> List[Instruction]:
-        return self._instructions
+    def instructions(self, layer: str) -> List[Instruction]:
+        if layer not in self._instructions:
+            self._instructions[layer] = []
+        return self._instructions[layer]
 
-    def print_instructions(self):
-        for instruction in self._instructions:
+    def layers(self) -> List[str]:
+        return list(self._instructions.keys())
+
+    def print_instructions_for_layer(self, layer: str):
+        for instruction in self.instructions(layer):
             print(instruction)
 
 
@@ -232,6 +236,24 @@ class Branch:
         p2 = Polygon(branch.outline_polygon_points)
         return p1.intersects(p2)
 
+    def debug_instructions(self):
+        debug_is = [instr(
+            py5.begin_shape
+        )]
+        for x, y in self.outline_polygon_points:
+            debug_is.append(
+                instr(
+                    py5.vertex,
+                    x, y
+                )
+            )
+        debug_is.append(
+            instr(
+                py5.end_shape, py5.CLOSE
+            )
+        )
+        return debug_is
+
 
 def combine_svgs(layers, new_svg):
     py5.begin_record(py5.SVG, new_svg)
@@ -266,8 +288,8 @@ def draw_tree(board: Board, x, y, width, height):
     # and the base at the bottom of the tree
     middle_base_x, middle_base_y = x + width / 2, y + height
     top_x, top_y = x + width / 2, y
-    board.d(py5.text, "mb", middle_base_x, middle_base_y)
-    board.d(py5.text, "top", top_x, top_y)
+    board.d("tree", py5.text, "mb", middle_base_x, middle_base_y)
+    board.d("tree", py5.text, "top", top_x, top_y)
 
     def typical_branch_length(branch_y):
         # branch_y is the distance from the top of the tree
@@ -330,29 +352,33 @@ def draw_tree(board: Board, x, y, width, height):
             branches.append(new_branch)
 
     for branch in branches:
-        board.ds(branch.instructions)
+        board.ds("tree", branch.instructions)
+        board.ds("debug", branch.debug_instructions())
 
 
 def settings():
-    py5.size(300, 600)
+    py5.size(500, 700)
 
 
 def setup():
-    py5.random_seed(123456)
+    py5.random_seed(1234567)
 
 
 def draw():
     board = Board()
 
-    board.d(py5.begin_record, py5.SVG, 'tree.svg')
-    board.d(py5.no_fill)
-    draw_tree(board,50, 50, 200, 500)
-    board.d(py5.end_record)
+    board.d("tree", py5.no_fill)
+    board.d("debug", py5.no_fill)
+    board.d("debug", py5.stroke, 255, 50, 50)
+    draw_tree(board,150, 100, 200, 500)
 
-    board.print_instructions()
+    board.print_instructions_for_layer("tree")
 
-    for instruction in board.instructions:
-        instruction[0](*instruction[1])
+    for layer in board.layers():
+        py5.begin_record(py5.SVG, f'{layer}.svg')
+        for instruction in board.instructions(layer):
+            instruction[0](*instruction[1])
+        py5.end_record()
 
     py5.exit_sketch()
 
