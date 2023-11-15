@@ -5,7 +5,6 @@ import random
 
 import py5
 
-
 Instruction = Tuple[Callable[..., ...], List, Dict]
 
 
@@ -77,7 +76,6 @@ class Branch:
 
         # convert angle to radians
         branch_angle = py5.radians(self.angle)
-        print("draw_branch", self.x, self.y, self.length, branch_angle)
 
         # draw the branch
 
@@ -98,14 +96,14 @@ class Branch:
         branch_end_x = self.x + self.length * py5.cos(branch_angle)
         branch_end_y = self.y + self.length * py5.sin(branch_angle)
         curve = Curve(
-            self.x - self.length * py5.cos(branch_angle-curvy_amount),
-            self.y - self.length * py5.sin(branch_angle-curvy_amount),
+            self.x - self.length * py5.cos(branch_angle - curvy_amount),
+            self.y - self.length * py5.sin(branch_angle - curvy_amount),
             self.x,
             self.y,
             branch_end_x,
             branch_end_y,
-            self.x + 2 * self.length * py5.cos(branch_angle+curvy_amount),
-            self.y + 2 * self.length * py5.sin(branch_angle+curvy_amount)
+            self.x + 2 * self.length * py5.cos(branch_angle + curvy_amount),
+            self.y + 2 * self.length * py5.sin(branch_angle + curvy_amount)
         )
 
         self.instructions.append(
@@ -123,12 +121,11 @@ class Branch:
         needle_count = int(self.length // self.needle_density)
         needle_count_first_side = needle_count // 2 + needle_count % 2
         needle_count_second_side = needle_count - needle_count_first_side
-        print(f"needle_count {needle_count} 1st={needle_count_first_side} 2nd={needle_count_second_side}")
 
         # what portion of branch will there be before the first needle?
         # how long is a needle likely to be
         needle_length = self.length / py5.random(4, 8)
-        first_needle_distance = py5.random(0, self.length/4)
+        first_needle_distance = py5.random(0, self.length / 4)
         last_needle_distance = self.length - py5.random(0, needle_length)
 
         # make the list of needle start points
@@ -164,8 +161,6 @@ class Branch:
         needle_starts = [x for x in needle_starts_all]  # if py5.random(0, 30) % 30 == 0]
         # (last_needle_distance - first_needle_distance) / needle_count
 
-        print(f'needle_starts {["{0:0.2f}".format(i) for i in needle_starts]}')
-
         # needle angle offset from branch angle (30º to 50º)
         left_angle = py5.radians(random.randint(30, 50))
         right_angle = py5.radians(random.randint(30, 50))
@@ -192,8 +187,8 @@ class Branch:
             needle_x, needle_y = curve.point_at(needle_start_distance / self.length)
 
             # now we need to adjust the needle start point to account for looseness
-            actual_needle_x = needle_x + looseness * needle_length/3 * py5.cos(needle_angle_rads)
-            actual_needle_y = needle_y + looseness * needle_length/3 * py5.sin(needle_angle_rads)
+            actual_needle_x = needle_x + looseness * needle_length / 3 * py5.cos(needle_angle_rads)
+            actual_needle_y = needle_y + looseness * needle_length / 3 * py5.sin(needle_angle_rads)
 
             needle_curviness = base_needle_curviness + py5.random(0.0, 0.1)
             if left:
@@ -202,14 +197,14 @@ class Branch:
             needle_end_x = actual_needle_x + needle_length * py5.cos(needle_angle_rads)
             needle_end_y = actual_needle_y + needle_length * py5.sin(needle_angle_rads)
             needle_curve = Curve(
-                actual_needle_x - needle_length * py5.cos(needle_angle_rads-needle_curviness),
-                actual_needle_y - needle_length * py5.sin(needle_angle_rads-needle_curviness),
+                actual_needle_x - needle_length * py5.cos(needle_angle_rads - needle_curviness),
+                actual_needle_y - needle_length * py5.sin(needle_angle_rads - needle_curviness),
                 actual_needle_x,
                 actual_needle_y,
                 needle_end_x,
                 needle_end_y,
-                actual_needle_x + 2 * needle_length * py5.cos(needle_angle_rads+needle_curviness),
-                actual_needle_y + 2 * needle_length * py5.sin(needle_angle_rads+needle_curviness)
+                actual_needle_x + 2 * needle_length * py5.cos(needle_angle_rads + needle_curviness),
+                actual_needle_y + 2 * needle_length * py5.sin(needle_angle_rads + needle_curviness)
             )
 
             if left:
@@ -291,12 +286,18 @@ def draw_tree(board: Board, x, y, width, height):
     board.d("tree", py5.text, "mb", middle_base_x, middle_base_y)
     board.d("tree", py5.text, "top", top_x, top_y)
 
+    board.d("debug", py5.begin_shape)
+    board.d("debug", py5.vertex, top_x, top_y)
+    board.d("debug", py5.vertex, x, middle_base_y)
+    board.d("debug", py5.vertex, x + width, middle_base_y)
+    board.d("debug", py5.end_shape, py5.CLOSE)
+
     def typical_branch_length(branch_y):
         # branch_y is the distance from the top of the tree
 
         # longer branches at the bottom, shorter branches at the top
         # 0.1*height at top to 0.18*height at bottom
-        return 0.1 * height + 0.04 * height * (branch_y/height)
+        return 0.1 * height + 0.04 * height * (branch_y / height)
 
     def branch_angle_at(branch_x: float, branch_y: float, typical: bool) -> float:
         # branch_y is the distance from the top of the tree
@@ -321,7 +322,7 @@ def draw_tree(board: Board, x, y, width, height):
 
         # now we have a radial_y, we can calculate the typical angle of the branch
         # were it to start at 0,radial_y and end at branch_x,branch_y
-        angle_rads = py5.atan2(branch_y-radial_y, branch_x)
+        angle_rads = py5.atan2(branch_y - radial_y, branch_x)
         angle_degrees = py5.degrees(angle_rads)
         if typical:
             return angle_degrees
@@ -344,10 +345,10 @@ def draw_tree(board: Board, x, y, width, height):
     # draw a whole load of branches from the top at random
     for i in range(1000):
         branch_y = py5.random(0, height)
-        branch_x = py5.random(-width, width) * (branch_y/height)
+        branch_x = py5.random(-width / 2, width / 2) * (branch_y / height)
         branch_length = typical_branch_length(branch_y)
         branch_angle = branch_angle_at(branch_x, branch_y, typical=py5.random() > 0.5)
-        new_branch = Branch(top_x+branch_x, top_y+branch_y, branch_length, branch_angle)
+        new_branch = Branch(top_x + branch_x, top_y + branch_y, branch_length, branch_angle)
         if not any([new_branch.will_overlap(branch) for branch in branches]):
             branches.append(new_branch)
 
@@ -365,21 +366,28 @@ def setup():
 
 
 def draw():
+    # initialise a board which will hold multiple layers of instructions
     board = Board()
 
+    # some initial instructions
     board.d("tree", py5.no_fill)
     board.d("debug", py5.no_fill)
     board.d("debug", py5.stroke, 255, 50, 50)
-    draw_tree(board,150, 100, 200, 500)
 
+    # draw the tree
+    draw_tree(board, 100, 100, 300, 500)
+
+    # debug: print out the instructions for the tree layer
     board.print_instructions_for_layer("tree")
 
+    # now actually write each layer into an SVG file
     for layer in board.layers():
         py5.begin_record(py5.SVG, f'{layer}.svg')
         for instruction in board.instructions(layer):
             instruction[0](*instruction[1])
         py5.end_record()
 
+    # close the sketch
     py5.exit_sketch()
 
 
