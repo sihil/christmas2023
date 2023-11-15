@@ -4,6 +4,7 @@ from xml.etree import ElementTree
 import random
 
 import py5
+from shapely import Polygon, Point
 
 Instruction = Tuple[Callable[..., ...], List, Dict]
 
@@ -66,10 +67,12 @@ class Branch:
     y: float
     length: float
     angle: float  # degrees
-    needle_density: Optional[float] = py5.random(4.5, 6.0)
-    staggering: Optional[float] = py5.random(0.1, 0.9)
+    needle_density: Optional[float] = field(default_factory=lambda: py5.random(3.5, 5.0))
+    staggering: Optional[float] = field(default_factory=lambda: py5.random(0.1, 0.8))
+    needle_angle_offset: Optional[float] = field(default_factory=lambda: py5.random(15, 50))
     instructions: List[Instruction] = field(init=False)
     outline_polygon_points: List[Tuple[float, float]] = field(init=False)
+    polygon: Polygon = field(init=False)
 
     def __post_init__(self):
         self.instructions = []
@@ -90,7 +93,8 @@ class Branch:
         # figure out the direction of curve
         # typically branches on the left (angle_with_zero_top 180-360) will curve to the right and vice versa
         # curving to the right will happen with a positive curvy_amount
-        if angle_with_zero_top < 180:
+        curve_left = angle_with_zero_top < 180
+        if curve_left:
             curvy_amount = -curvy_amount
 
         branch_end_x = self.x + self.length * py5.cos(branch_angle)
@@ -124,7 +128,9 @@ class Branch:
 
         # what portion of branch will there be before the first needle?
         # how long is a needle likely to be
-        needle_length = self.length / py5.random(4, 8)
+        shortest_length = self.length / (self.needle_angle_offset / 3)
+        longest_length = self.length / (self.needle_angle_offset / 6)
+        needle_length = py5.random(shortest_length, longest_length)
         first_needle_distance = py5.random(0, self.length / 4)
         last_needle_distance = self.length - py5.random(0, needle_length)
 
@@ -162,15 +168,17 @@ class Branch:
         # (last_needle_distance - first_needle_distance) / needle_count
 
         # needle angle offset from branch angle (30º to 50º)
-        left_angle = py5.radians(random.randint(30, 50))
-        right_angle = py5.radians(random.randint(30, 50))
+        left_angle = py5.radians(self.needle_angle_offset+random.randint(-2, 2))
+        right_angle = py5.radians(self.needle_angle_offset+random.randint(-2, 2))
 
         # how loose will this branch be?
         # 0.0 = tight, 1.0 = loose
         # this will determine whether the needles are actually drawn from the branch or whether there is a gap
         looseness = py5.random(0.3, 1.0)
 
-        base_needle_curviness = py5.random(0.0, 0.5)
+        base_needle_curviness = abs(curvy_amount) * 0.7
+
+        outer_needle_curve_follows_branch = py5.random() + base_needle_curviness > 0.7
 
         # decide if we're starting  on the left or right side
         left = bool(py5.random_int(0, 1))
@@ -186,25 +194,35 @@ class Branch:
             # x,y coords of perfect needle start
             needle_x, needle_y = curve.point_at(needle_start_distance / self.length)
 
-            # now we need to adjust the needle start point to account for looseness
-            actual_needle_x = needle_x + looseness * needle_length / 3 * py5.cos(needle_angle_rads)
-            actual_needle_y = needle_y + looseness * needle_length / 3 * py5.sin(needle_angle_rads)
+            # this needles length
+            this_needle_length = needle_length * py5.random(0.9, 2)
+            this_needle_looseness = looseness * py5.random(0.7, 1.3)
 
+            # now we need to adjust the needle start point to account for looseness
+            actual_needle_x = needle_x + this_needle_looseness * this_needle_length / 3 * py5.cos(needle_angle_rads)
+            actual_needle_y = needle_y + this_needle_looseness * this_needle_length / 3 * py5.sin(needle_angle_rads)
+
+            outer_needle = curvy_amount > 0 and left or curvy_amount < 0 and not left
+            needle_curves_away_from_branch = not outer_needle or outer_needle and not outer_needle_curve_follows_branch
             needle_curviness = base_needle_curviness + py5.random(0.0, 0.1)
-            if left:
+
+            needle_curves_left = (needle_curves_away_from_branch and curvy_amount < 0 or
+                                  not needle_curves_away_from_branch and curvy_amount > 0)
+
+            if needle_curves_left:
                 needle_curviness = -needle_curviness
 
-            needle_end_x = actual_needle_x + needle_length * py5.cos(needle_angle_rads)
-            needle_end_y = actual_needle_y + needle_length * py5.sin(needle_angle_rads)
+            needle_end_x = actual_needle_x + this_needle_length * py5.cos(needle_angle_rads)
+            needle_end_y = actual_needle_y + this_needle_length * py5.sin(needle_angle_rads)
             needle_curve = Curve(
-                actual_needle_x - needle_length * py5.cos(needle_angle_rads - needle_curviness),
-                actual_needle_y - needle_length * py5.sin(needle_angle_rads - needle_curviness),
+                actual_needle_x - this_needle_length * py5.cos(needle_angle_rads - needle_curviness),
+                actual_needle_y - this_needle_length * py5.sin(needle_angle_rads - needle_curviness),
                 actual_needle_x,
                 actual_needle_y,
                 needle_end_x,
                 needle_end_y,
-                actual_needle_x + 2 * needle_length * py5.cos(needle_angle_rads + needle_curviness),
-                actual_needle_y + 2 * needle_length * py5.sin(needle_angle_rads + needle_curviness)
+                actual_needle_x + 2 * this_needle_length * py5.cos(needle_angle_rads + needle_curviness),
+                actual_needle_y + 2 * this_needle_length * py5.sin(needle_angle_rads + needle_curviness)
             )
 
             if left:
@@ -225,11 +243,10 @@ class Branch:
 
         self.outline_polygon_points.append((branch_end_x, branch_end_y))
 
+        self.polygon = Polygon(self.outline_polygon_points)
+
     def will_overlap(self, branch: 'Branch'):
-        from shapely import Polygon
-        p1 = Polygon(self.outline_polygon_points)
-        p2 = Polygon(branch.outline_polygon_points)
-        return p1.intersects(p2)
+        return self.polygon.intersects(branch.polygon)
 
     def debug_instructions(self):
         debug_is = [instr(
@@ -343,14 +360,40 @@ def draw_tree(board: Board, x, y, width, height):
                        branch_angle_at(0, top_y + top_branch_length, typical=True))]
 
     # draw a whole load of branches from the top at random
-    for i in range(1000):
+    for i in range(100):
         branch_y = py5.random(0, height)
         branch_x = py5.random(-width / 2, width / 2) * (branch_y / height)
         branch_length = typical_branch_length(branch_y)
         branch_angle = branch_angle_at(branch_x, branch_y, typical=py5.random() > 0.5)
         new_branch = Branch(top_x + branch_x, top_y + branch_y, branch_length, branch_angle)
         if not any([new_branch.will_overlap(branch) for branch in branches]):
+            print(f"adding branch at {top_x + branch_x},{top_y + branch_y}")
             branches.append(new_branch)
+
+    print(f"branches: {len(branches)}/1000 !")
+
+    # # now look for gaps in the branches and fill them in
+    # # make the triangle in shapely
+    # gaps = Polygon([(top_x, top_y), (x, middle_base_y), (x+width, middle_base_y)])
+    # # now subtract the branches from the triangle
+    # for branch in branches:
+    #     gaps = gaps.difference(branch.polygon)
+    #
+    # # now we have a polygon with gaps in it
+    # # lets scan it and try to add branches to fill in the gaps
+    # # we'll start at the top and work our way down
+    # # we'll start at the left and work our way right
+    # for search_y in range(int(top_y), int(middle_base_y), 10):
+    #     for search_x in range(int(x), int(x + width), 10):
+    #         if gaps.contains(Point(search_x, search_y)):
+    #             # we have a gap here, so lets try to add a branch
+    #             branch_length = typical_branch_length(search_y)
+    #             branch_angle = branch_angle_at(search_x - middle_base_x, search_y - middle_base_y, typical=True)
+    #             new_branch = Branch(search_x, search_y, branch_length, branch_angle)
+    #             if not any([new_branch.will_overlap(branch) for branch in branches]):
+    #                 print(f"filling gap at {search_x},{search_y}")
+    #                 branches.append(new_branch)
+    #                 gaps = gaps.difference(new_branch.polygon)
 
     for branch in branches:
         board.ds("tree", branch.instructions)
