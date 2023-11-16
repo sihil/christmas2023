@@ -1,10 +1,16 @@
 from dataclasses import dataclass, field
-from typing import Optional, Callable, List, Tuple, Dict, Set
+from typing import Optional, Callable, List, Tuple, Dict, Set, Protocol
 from xml.etree import ElementTree
 import random
 
 import py5
 from shapely import Polygon, GEOSException
+
+
+class SpatialShape(Protocol):
+    @property
+    def coords(self) -> List[Tuple[float, float]]:
+        raise NotImplemented
 
 
 class SpatialHash(object):
@@ -13,7 +19,7 @@ class SpatialHash(object):
     """
     def __init__(self, cell_size):
         self.cell_size = cell_size
-        self.grid: Dict[Tuple[int, int], List['Branch']] = {}
+        self.grid: Dict[Tuple[int, int], List[SpatialShape]] = {}
 
     def key(self, x: float, y: float):
         cell_size = self.cell_size
@@ -34,25 +40,25 @@ class SpatialHash(object):
             self.grid[key] = objects
         objects.append(value)
 
-    def insert_branch(self, branch: 'Branch'):
+    def insert_shape(self, shape: SpatialShape):
         """
         Insert object into the spatial hash map.
         """
-        for x, y in branch.polygon.exterior.coords:
-            self.insert(x, y, branch)
+        for x, y in shape.coords:
+            self.insert(x, y, shape)
 
-    def query(self, x: float, y: float) -> List['Branch']:
+    def query(self, x: float, y: float) -> List[SpatialShape]:
         """
         Return all objects in the cell specified by point.
         """
         return self.grid.get(self.key(x, y), set())
 
-    def query_branch(self, branch: 'Branch') -> List['Branch']:
+    def query_shape(self, shape: SpatialShape) -> List[SpatialShape]:
         """
         Return all objects in the cell specified by point.
         """
         return [b
-                for x, y in branch.polygon.exterior.coords
+                for x, y in shape.coords
                 for b in self.query(x, y)]
 
 
@@ -298,6 +304,10 @@ class Branch:
 
         self.polygon = Polygon(self.outline_polygon_points)
 
+    @property
+    def coords(self) -> List[Tuple[float, float]]:
+        return list(self.polygon.exterior.coords)
+
     def will_overlap(self, branch: 'Branch') -> bool:
         return self.polygon.intersects(branch.polygon)
 
@@ -329,6 +339,23 @@ class Branch:
             )
         )
         return debug_is
+
+
+class Bauble:
+    def __init__(self, x, y, radius: int):
+        self.x = x
+        self.y = y
+        self.radius = radius
+
+    @property
+    def coords(self) -> List[Tuple[float, float]]:
+        return [(self.x, self.y)]
+
+    def instructions(self) -> List[Instruction]:
+        radii = list(range(self.radius, 0, -2))
+        return [
+            instr(py5.ellipse, self.x, self.y, r, r) for r in radii
+        ]
 
 
 def combine_svgs(layers, new_svg):
@@ -433,10 +460,10 @@ def draw_tree(board: Board, x, y, width, height):
 
     def add_branch(b: Branch):
         branches.append(b)
-        spatial_hash.insert_branch(b)
+        spatial_hash.insert_shape(b)
 
     def branch_will_overlap_existing(b: Branch, allow_some_overlap=False):
-        shortlist = spatial_hash.query_branch(b)
+        shortlist = spatial_hash.query_shape(b)
         if allow_some_overlap:
             return any([b.will_overlap_a_lot(existing) for existing in shortlist])
         return any([b.will_overlap(existing) for existing in shortlist])
@@ -452,7 +479,7 @@ def draw_tree(board: Board, x, y, width, height):
     # 3. now fill in the remaining gaps with solo needles
 
     # 1 a/b.
-    def populate(edge_size: float, fill_prob: float, shorten: bool):
+    def populate_with_branches(edge_size: float, fill_prob: float, shorten: bool):
         for search_y in range(int(top_y + top_branch_length), int(middle_base_y), 10):
             ratio = (search_y-top_y) / height
             left_edge = middle_base_x - (width / 2) * ratio
@@ -484,15 +511,39 @@ def draw_tree(board: Board, x, y, width, height):
                             if not branch_will_overlap_existing(new_branch, allow_some_overlap=True):
                                 add_branch(new_branch)
 
-    populate(0.1*width, 0.25, shorten=False)
+    populate_with_branches(0.1*width, 0.25, shorten=False)
 
-    populate(0.3*width, 0.75, shorten=True)
+    populate_with_branches(0.3*width, 0.75, shorten=True)
 
-    populate(0.5*width, 0.9, shorten=True)
+    populate_with_branches(0.5*width, 0.9, shorten=True)
 
     for branch in branches:
         board.ds("tree", branch.instructions)
         board.ds("debug", branch.debug_instructions())
+
+    # how about we now add some baubles to the tree?
+    # we'll do this by adding some circles to the tree
+
+    def make_baubles() -> List[Bauble]:
+        baubles: List[Bauble] = []
+
+        while len(baubles) < py5.random_int(8, 11):
+
+            search_y = random.randint(int(top_y + top_branch_length), int(middle_base_y))
+
+            ratio = (search_y-top_y) / height
+            left_edge = middle_base_x - (width / 2) * ratio
+            right_edge = middle_base_x + (width / 2) * ratio
+            search_x = random.randint(int(left_edge), int(right_edge))
+
+            # is there another bauble within 50 pixels?
+            if not any([py5.dist(search_x, search_y, b.x, b.y) < 75 for b in baubles]):
+                baubles.append(Bauble(search_x, search_y, 18))
+
+        return baubles
+
+    for bauble in make_baubles():
+        board.ds("baubles", bauble.instructions())
 
 
 def settings():
@@ -509,14 +560,18 @@ def draw():
 
     # some initial instructions
     board.d("tree", py5.no_fill)
+
+    board.d("baubles", py5.no_fill)
+    board.d("baubles", py5.stroke, 255, 50, 50)
+
     board.d("debug", py5.no_fill)
-    board.d("debug", py5.stroke, 255, 50, 50)
+    board.d("debug", py5.stroke, 50, 50, 255)
 
     # draw the tree
     draw_tree(board, 100, 100, 300, 500)
 
     # debug: print out the instructions for the tree layer
-    # board.print_instructions_for_layer("tree")
+    board.print_instructions_for_layer("baubles")
 
     # now actually write each layer into an SVG file
     for layer in board.layers():
