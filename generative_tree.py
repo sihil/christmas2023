@@ -362,8 +362,10 @@ def draw_tree(board: Board, x, y, width, height):
 
     top_branch_length = typical_branch_length(0)
 
-    branches = [Branch(top_x, top_y + top_branch_length, top_branch_length,
-                       branch_angle_at(0, top_y + top_branch_length, typical=True))]
+    branches = [
+        # Branch(top_x, top_y + top_branch_length, top_branch_length,
+        #                branch_angle_at(0, top_y + top_branch_length, typical=True))
+    ]
 
     # new strategy
 
@@ -375,26 +377,27 @@ def draw_tree(board: Board, x, y, width, height):
     #   b. we need to fill the gaps with branches
     # 3. now fill in the remaining gaps with solo needles
 
-    # 1a.
+    # 1 a/b.
     edge_size = 0.1 * width
     for search_y in range(int(top_y + top_branch_length), int(middle_base_y), 10):
         ratio = (search_y-top_y) / height
         left_edge = middle_base_x - (width / 2) * ratio
         right_edge = middle_base_x + (width / 2) * ratio
-        print(f"search_y: {search_y} ratio: {ratio} left_edge: {left_edge} right_edge: {right_edge}")
         width_at_y = right_edge - left_edge
-        if width_at_y > edge_size * 2:
+        if width_at_y < edge_size * 2 or search_y > middle_base_y - edge_size:
             x_range_at_y = range(int(left_edge), int(right_edge), 10)
         else:
             x_range_at_y = (*range(int(left_edge), int(left_edge + edge_size), 10),
                             *range(int(right_edge - edge_size), int(right_edge), 10))
         for search_x in x_range_at_y:
-            branch_length = typical_branch_length(search_y - top_y)
-            branch_angle = branch_angle_at(search_x - middle_base_x, search_y - middle_base_y, typical=True)
-            new_branch = Branch(search_x, search_y, branch_length, branch_angle)
-            if not any([new_branch.will_overlap(branch) for branch in branches]):
-                #print(f"adding branch at {search_x},{search_y}")
-                branches.append(new_branch)
+            if py5.random() > 0.25:  # one time in four try to add a branch here
+                branch_length = typical_branch_length(search_y - top_y)
+                branch_angle = branch_angle_at(search_x - middle_base_x, search_y - top_y, typical=True)
+                new_branch = Branch(search_x, search_y, branch_length, branch_angle)
+                if not any([new_branch.will_overlap(branch) for branch in branches]):
+                    branches.append(new_branch)
+
+
 
     # # draw a whole load of branches from the top at random
     # for i in range(100):
@@ -458,7 +461,7 @@ def draw():
     draw_tree(board, 100, 100, 300, 500)
 
     # debug: print out the instructions for the tree layer
-    board.print_instructions_for_layer("tree")
+    # board.print_instructions_for_layer("tree")
 
     # now actually write each layer into an SVG file
     for layer in board.layers():
