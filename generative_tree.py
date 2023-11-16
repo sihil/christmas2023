@@ -302,6 +302,10 @@ def draw_tree(board: Board, x, y, width, height):
     # and the base at the bottom of the tree
     middle_base_x, middle_base_y = x + width / 2, y + height
     top_x, top_y = x + width / 2, y
+
+    print(f"middle_base_x: {middle_base_x} middle_base_y: {middle_base_y}")
+    print(f"top_x: {top_x} top_y: {top_y}")
+
     board.d("tree", py5.text, "mb", middle_base_x, middle_base_y)
     board.d("tree", py5.text, "top", top_x, top_y)
 
@@ -361,18 +365,49 @@ def draw_tree(board: Board, x, y, width, height):
     branches = [Branch(top_x, top_y + top_branch_length, top_branch_length,
                        branch_angle_at(0, top_y + top_branch_length, typical=True))]
 
-    # draw a whole load of branches from the top at random
-    for i in range(100):
-        branch_y = py5.random(0, height)
-        branch_x = py5.random(-width / 2, width / 2) * (branch_y / height)
-        branch_length = typical_branch_length(branch_y)
-        branch_angle = branch_angle_at(branch_x, branch_y, typical=py5.random() > 0.5)
-        new_branch = Branch(top_x + branch_x, top_y + branch_y, branch_length, branch_angle)
-        if not any([new_branch.will_overlap(branch) for branch in branches]):
-            print(f"adding branch at {top_x + branch_x},{top_y + branch_y}")
-            branches.append(new_branch)
+    # new strategy
 
-    print(f"branches: {len(branches)}/1000 !")
+    # 1. draw branches using only typical angles (±)
+    #   a. at the outside edges of the triangle (perhaps this is width*0.1 from the edge)
+    #   b. at the bottom of the triangle (perhaps this is height*0.1 from the bottom)
+    # 2. now we need to populate the inside of the triangle with branches
+    #   a. we need to find all the gaps in the branches
+    #   b. we need to fill the gaps with branches
+    # 3. now fill in the remaining gaps with solo needles
+
+    # 1a.
+    edge_size = 0.1 * width
+    for search_y in range(int(top_y + top_branch_length), int(middle_base_y), 10):
+        ratio = (search_y-top_y) / height
+        left_edge = middle_base_x - (width / 2) * ratio
+        right_edge = middle_base_x + (width / 2) * ratio
+        print(f"search_y: {search_y} ratio: {ratio} left_edge: {left_edge} right_edge: {right_edge}")
+        width_at_y = right_edge - left_edge
+        if width_at_y > edge_size * 2:
+            x_range_at_y = range(int(left_edge), int(right_edge), 10)
+        else:
+            x_range_at_y = (*range(int(left_edge), int(left_edge + edge_size), 10),
+                            *range(int(right_edge - edge_size), int(right_edge), 10))
+        for search_x in x_range_at_y:
+            branch_length = typical_branch_length(search_y - top_y)
+            branch_angle = branch_angle_at(search_x - middle_base_x, search_y - middle_base_y, typical=True)
+            new_branch = Branch(search_x, search_y, branch_length, branch_angle)
+            if not any([new_branch.will_overlap(branch) for branch in branches]):
+                #print(f"adding branch at {search_x},{search_y}")
+                branches.append(new_branch)
+
+    # # draw a whole load of branches from the top at random
+    # for i in range(100):
+    #     branch_y = py5.random(0, height)
+    #     branch_x = py5.random(-width / 2, width / 2) * (branch_y / height)
+    #     branch_length = typical_branch_length(branch_y)
+    #     branch_angle = branch_angle_at(branch_x, branch_y, typical=py5.random() > 0.5)
+    #     new_branch = Branch(top_x + branch_x, top_y + branch_y, branch_length, branch_angle)
+    #     if not any([new_branch.will_overlap(branch) for branch in branches]):
+    #         print(f"adding branch at {top_x + branch_x},{top_y + branch_y}")
+    #         branches.append(new_branch)
+    #
+    # print(f"branches: {len(branches)}/1000 !")
 
     # # now look for gaps in the branches and fill them in
     # # make the triangle in shapely
