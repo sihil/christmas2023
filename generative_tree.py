@@ -1,10 +1,60 @@
 from dataclasses import dataclass, field
-from typing import Optional, Callable, List, Tuple, Dict
+from typing import Optional, Callable, List, Tuple, Dict, Set
 from xml.etree import ElementTree
 import random
 
 import py5
-from shapely import Polygon, Point
+from shapely import Polygon, GEOSException
+
+
+class SpatialHash(object):
+    """
+    a spatial index which can be used for a broad-phase collision detection strategy.
+    """
+    def __init__(self, cell_size):
+        self.cell_size = cell_size
+        self.grid: Dict[Tuple[int, int], List['Branch']] = {}
+
+    def key(self, x: float, y: float):
+        cell_size = self.cell_size
+        import math
+        return (
+            int((math.floor(x/cell_size))*cell_size),
+            int((math.floor(y/cell_size))*cell_size)
+        )
+
+    def insert(self, x: float, y: float, value):
+        """
+        Insert object into the spatial hash map.
+        """
+        key = self.key(x, y)
+        objects = self.grid.get(key)
+        if objects is None:
+            objects = []
+            self.grid[key] = objects
+        objects.append(value)
+
+    def insert_branch(self, branch: 'Branch'):
+        """
+        Insert object into the spatial hash map.
+        """
+        for x, y in branch.polygon.exterior.coords:
+            self.insert(x, y, branch)
+
+    def query(self, x: float, y: float) -> List['Branch']:
+        """
+        Return all objects in the cell specified by point.
+        """
+        return self.grid.get(self.key(x, y), set())
+
+    def query_branch(self, branch: 'Branch') -> List['Branch']:
+        """
+        Return all objects in the cell specified by point.
+        """
+        return [b
+                for x, y in branch.polygon.exterior.coords
+                for b in self.query(x, y)]
+
 
 Instruction = Tuple[Callable[..., ...], List, Dict]
 
@@ -67,6 +117,7 @@ class Branch:
     y: float
     length: float
     angle: float  # degrees
+    branch_needle_ratio: float = field(default_factory=lambda: 1.0)
     needle_density: Optional[float] = field(default_factory=lambda: py5.random(4, 4.5))
     staggering: Optional[float] = field(default_factory=lambda: py5.random(0.1, 0.8))
     needle_angle_offset: Optional[float] = field(default_factory=lambda: py5.random(20, 50))
@@ -121,12 +172,12 @@ class Branch:
 
         # now draw a series of needles along the branch
 
+        # how long is a needle likely to be
+        shortest_length = self.length * self.branch_needle_ratio / (self.needle_angle_offset / 3)
+        longest_length = self.length * self.branch_needle_ratio / (self.needle_angle_offset / 6)
+        needle_length = py5.random(shortest_length, longest_length)
 
         # what portion of branch will there be before the first needle?
-        # how long is a needle likely to be
-        shortest_length = self.length / (self.needle_angle_offset / 3)
-        longest_length = self.length / (self.needle_angle_offset / 6)
-        needle_length = py5.random(shortest_length, longest_length)
         first_needle_distance = py5.random(0, self.length / 4)
         last_needle_distance = self.length - py5.random(0, needle_length)
 
@@ -247,8 +298,19 @@ class Branch:
 
         self.polygon = Polygon(self.outline_polygon_points)
 
-    def will_overlap(self, branch: 'Branch'):
+    def will_overlap(self, branch: 'Branch') -> bool:
         return self.polygon.intersects(branch.polygon)
+
+    def will_overlap_a_lot(self, branch: 'Branch') -> bool:
+        # returns true if the overlap is more than 20% of the area of this branch or the other branch
+        if not self.will_overlap(branch):
+            return False
+        try:
+            area = self.polygon.intersection(branch.polygon).area
+            return area > 0.10 * self.polygon.area or area > 0.10 * branch.polygon.area
+        except GEOSException:
+            # this means the intersection could not be created because the polygons are too close together
+            return True
 
     def debug_instructions(self):
         debug_is = [instr(
@@ -362,10 +424,22 @@ def draw_tree(board: Board, x, y, width, height):
 
     top_branch_length = typical_branch_length(0)
 
+    spatial_hash = SpatialHash(10)
+
     branches = [
         # Branch(top_x, top_y + top_branch_length, top_branch_length,
         #                branch_angle_at(0, top_y + top_branch_length, typical=True))
     ]
+
+    def add_branch(b: Branch):
+        branches.append(b)
+        spatial_hash.insert_branch(b)
+
+    def branch_will_overlap_existing(b: Branch, allow_some_overlap=False):
+        shortlist = spatial_hash.query_branch(b)
+        if allow_some_overlap:
+            return any([b.will_overlap_a_lot(existing) for existing in shortlist])
+        return any([b.will_overlap(existing) for existing in shortlist])
 
     # new strategy
 
@@ -378,62 +452,43 @@ def draw_tree(board: Board, x, y, width, height):
     # 3. now fill in the remaining gaps with solo needles
 
     # 1 a/b.
-    edge_size = 0.1 * width
-    for search_y in range(int(top_y + top_branch_length), int(middle_base_y), 10):
-        ratio = (search_y-top_y) / height
-        left_edge = middle_base_x - (width / 2) * ratio
-        right_edge = middle_base_x + (width / 2) * ratio
-        width_at_y = right_edge - left_edge
-        if width_at_y < edge_size * 2 or search_y > middle_base_y - edge_size:
-            x_range_at_y = range(int(left_edge), int(right_edge), 10)
-        else:
-            x_range_at_y = (*range(int(left_edge), int(left_edge + edge_size), 10),
-                            *range(int(right_edge - edge_size), int(right_edge), 10))
-        for search_x in x_range_at_y:
-            if py5.random() > 0.25:  # one time in four try to add a branch here
-                branch_length = typical_branch_length(search_y - top_y)
-                branch_angle = branch_angle_at(search_x - middle_base_x, search_y - top_y, typical=True)
-                new_branch = Branch(search_x, search_y, branch_length, branch_angle)
-                if not any([new_branch.will_overlap(branch) for branch in branches]):
-                    branches.append(new_branch)
+    def populate(edge_size: float, fill_prob: float, shorten: bool):
+        for search_y in range(int(top_y + top_branch_length), int(middle_base_y), 10):
+            ratio = (search_y-top_y) / height
+            left_edge = middle_base_x - (width / 2) * ratio
+            right_edge = middle_base_x + (width / 2) * ratio
+            width_at_y = right_edge - left_edge
+            if width_at_y < edge_size * 2 or search_y > middle_base_y - edge_size:
+                x_range_at_y = range(int(left_edge), int(right_edge), 10)
+            else:
+                x_range_at_y = (*range(int(left_edge), int(left_edge + edge_size), 10),
+                                *range(int(right_edge - edge_size), int(right_edge), 10))
+            for search_x in x_range_at_y:
+                if py5.random() < fill_prob:  # one time in four try to add a branch here
+                    branch_length = typical_branch_length(search_y - top_y)
+                    branch_angle = branch_angle_at(search_x - middle_base_x, search_y - top_y, typical=True)
+                    new_branch = Branch(search_x, search_y, branch_length, branch_angle)
+                    if not branch_will_overlap_existing(new_branch, allow_some_overlap=True):
+                        add_branch(new_branch)
+                    elif shorten:
+                        # try to shorten the branch
+                        branch_angle = branch_angle_at(search_x - middle_base_x, search_y - top_y, typical=False)
+                        new_branch = Branch(search_x, search_y, branch_length * (2/3), branch_angle,
+                                            branch_needle_ratio=3/2)
+                        if not branch_will_overlap_existing(new_branch, allow_some_overlap=True):
+                            add_branch(new_branch)
+                        else:
+                            # try to shorten the branch
+                            new_branch = Branch(search_x, search_y, branch_length * (1/2), branch_angle,
+                                                branch_needle_ratio=2)
+                            if not branch_will_overlap_existing(new_branch, allow_some_overlap=True):
+                                add_branch(new_branch)
 
+    populate(0.1*width, 0.25, shorten=False)
 
+    populate(0.3*width, 0.75, shorten=True)
 
-    # # draw a whole load of branches from the top at random
-    # for i in range(100):
-    #     branch_y = py5.random(0, height)
-    #     branch_x = py5.random(-width / 2, width / 2) * (branch_y / height)
-    #     branch_length = typical_branch_length(branch_y)
-    #     branch_angle = branch_angle_at(branch_x, branch_y, typical=py5.random() > 0.5)
-    #     new_branch = Branch(top_x + branch_x, top_y + branch_y, branch_length, branch_angle)
-    #     if not any([new_branch.will_overlap(branch) for branch in branches]):
-    #         print(f"adding branch at {top_x + branch_x},{top_y + branch_y}")
-    #         branches.append(new_branch)
-    #
-    # print(f"branches: {len(branches)}/1000 !")
-
-    # # now look for gaps in the branches and fill them in
-    # # make the triangle in shapely
-    # gaps = Polygon([(top_x, top_y), (x, middle_base_y), (x+width, middle_base_y)])
-    # # now subtract the branches from the triangle
-    # for branch in branches:
-    #     gaps = gaps.difference(branch.polygon)
-    #
-    # # now we have a polygon with gaps in it
-    # # lets scan it and try to add branches to fill in the gaps
-    # # we'll start at the top and work our way down
-    # # we'll start at the left and work our way right
-    # for search_y in range(int(top_y), int(middle_base_y), 10):
-    #     for search_x in range(int(x), int(x + width), 10):
-    #         if gaps.contains(Point(search_x, search_y)):
-    #             # we have a gap here, so lets try to add a branch
-    #             branch_length = typical_branch_length(search_y)
-    #             branch_angle = branch_angle_at(search_x - middle_base_x, search_y - middle_base_y, typical=True)
-    #             new_branch = Branch(search_x, search_y, branch_length, branch_angle)
-    #             if not any([new_branch.will_overlap(branch) for branch in branches]):
-    #                 print(f"filling gap at {search_x},{search_y}")
-    #                 branches.append(new_branch)
-    #                 gaps = gaps.difference(new_branch.polygon)
+    populate(0.5*width, 0.9, shorten=True)
 
     for branch in branches:
         board.ds("tree", branch.instructions)
