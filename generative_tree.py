@@ -67,9 +67,9 @@ class Branch:
     y: float
     length: float
     angle: float  # degrees
-    needle_density: Optional[float] = field(default_factory=lambda: py5.random(3.5, 5.0))
+    needle_density: Optional[float] = field(default_factory=lambda: py5.random(4, 4.5))
     staggering: Optional[float] = field(default_factory=lambda: py5.random(0.1, 0.8))
-    needle_angle_offset: Optional[float] = field(default_factory=lambda: py5.random(15, 50))
+    needle_angle_offset: Optional[float] = field(default_factory=lambda: py5.random(20, 50))
     instructions: List[Instruction] = field(init=False)
     outline_polygon_points: List[Tuple[float, float]] = field(init=False)
     polygon: Polygon = field(init=False)
@@ -87,7 +87,7 @@ class Branch:
         # 0.0 = straight, 1.2 = very curvy
         angle_with_zero_top = (self.angle + 90) % 360
         degrees_from_up = angle_with_zero_top if angle_with_zero_top < 180 else 360 - angle_with_zero_top
-        max_curvy = 0.6 * (degrees_from_up / 180) + 0.6
+        max_curvy = 0.6 * (degrees_from_up / 180) + 0.4
         curvy_amount = py5.random(0.05, max_curvy)
 
         # figure out the direction of curve
@@ -121,10 +121,6 @@ class Branch:
 
         # now draw a series of needles along the branch
 
-        # how many needles will there be?
-        needle_count = int(self.length // self.needle_density)
-        needle_count_first_side = needle_count // 2 + needle_count % 2
-        needle_count_second_side = needle_count - needle_count_first_side
 
         # what portion of branch will there be before the first needle?
         # how long is a needle likely to be
@@ -133,6 +129,12 @@ class Branch:
         needle_length = py5.random(shortest_length, longest_length)
         first_needle_distance = py5.random(0, self.length / 4)
         last_needle_distance = self.length - py5.random(0, needle_length)
+
+        needle_populated_length = last_needle_distance - first_needle_distance
+
+        # how many needles will there be?
+        needle_count = int(needle_populated_length // self.needle_density)
+        needle_count_first_side = needle_count // 2 + needle_count % 2
 
         # make the list of needle start points
         # if stagger is 1, they will alternate evenly between left and right
