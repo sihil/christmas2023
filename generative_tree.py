@@ -4,6 +4,7 @@ from xml.etree import ElementTree
 import random
 
 import py5
+import vpype_cli
 from shapely import Polygon, GEOSException
 
 
@@ -17,6 +18,7 @@ class SpatialHash(object):
     """
     a spatial index which can be used for a broad-phase collision detection strategy.
     """
+
     def __init__(self, cell_size):
         self.cell_size = cell_size
         self.grid: Dict[Tuple[int, int], List[SpatialShape]] = {}
@@ -25,8 +27,8 @@ class SpatialHash(object):
         cell_size = self.cell_size
         import math
         return (
-            int((math.floor(x/cell_size))*cell_size),
-            int((math.floor(y/cell_size))*cell_size)
+            int((math.floor(x / cell_size)) * cell_size),
+            int((math.floor(y / cell_size)) * cell_size)
         )
 
     def insert(self, x: float, y: float, value):
@@ -227,8 +229,8 @@ class Branch:
         # (last_needle_distance - first_needle_distance) / needle_count
 
         # needle angle offset from branch angle (30º to 50º)
-        left_angle = py5.radians(self.needle_angle_offset+random.randint(-2, 2))
-        right_angle = py5.radians(self.needle_angle_offset+random.randint(-2, 2))
+        left_angle = py5.radians(self.needle_angle_offset + random.randint(-2, 2))
+        right_angle = py5.radians(self.needle_angle_offset + random.randint(-2, 2))
 
         # how loose will this branch be?
         # 0.0 = tight, 1.0 = loose
@@ -358,7 +360,7 @@ class Bauble:
         ]
 
 
-def combine_svgs(layers, new_svg):
+def combine_svgs(layers: Dict[str, str], new_svg: str):
     py5.begin_record(py5.SVG, new_svg)
     py5.end_record()
     ElementTree.register_namespace('', 'http://www.w3.org/2000/svg')
@@ -367,13 +369,13 @@ def combine_svgs(layers, new_svg):
     combined.set('xmlns:inkscape',
                  'http://www.inkscape.org/namespaces/inkscape')
 
-    for svg in layers:
+    for name, svg in layers.items():
         markup = ElementTree.parse(svg).getroot()
         group = ElementTree.SubElement(combined, 'g')
-        group.set('id', svg)
+        group.set('id', name)
         group.set('inkscape:groupmode', 'bar')
         group.set('inkscape:groupmode', 'layer')
-        group.set('inkscape:label', svg)
+        group.set('inkscape:label', name)
 
         for child in list(markup):
             group.append(child)
@@ -391,9 +393,6 @@ def draw_tree(board: Board, x, y, width, height):
     # and the base at the bottom of the tree
     middle_base_x, middle_base_y = x + width / 2, y + height
     top_x, top_y = x + width / 2, y
-
-    print(f"middle_base_x: {middle_base_x} middle_base_y: {middle_base_y}")
-    print(f"top_x: {top_x} top_y: {top_y}")
 
     board.d("tree", py5.text, "mb", middle_base_x, middle_base_y)
     board.d("tree", py5.text, "top", top_x, top_y)
@@ -461,6 +460,7 @@ def draw_tree(board: Board, x, y, width, height):
     def add_branch(b: Branch):
         branches.append(b)
         spatial_hash.insert_shape(b)
+        print("|", end="")
 
     def branch_will_overlap_existing(b: Branch, allow_some_overlap=False):
         shortlist = spatial_hash.query_shape(b)
@@ -481,7 +481,7 @@ def draw_tree(board: Board, x, y, width, height):
     # 1 a/b.
     def populate_with_branches(edge_size: float, fill_prob: float, shorten: bool):
         for search_y in range(int(top_y + top_branch_length), int(middle_base_y), 10):
-            ratio = (search_y-top_y) / height
+            ratio = (search_y - top_y) / height
             left_edge = middle_base_x - (width / 2) * ratio
             right_edge = middle_base_x + (width / 2) * ratio
             width_at_y = right_edge - left_edge
@@ -492,6 +492,7 @@ def draw_tree(board: Board, x, y, width, height):
                                 *range(int(right_edge - edge_size), int(right_edge), 10))
             for search_x in x_range_at_y:
                 if py5.random() < fill_prob:  # one time in four try to add a branch here
+                    print(".", end="")
                     branch_length = typical_branch_length(search_y - top_y)
                     branch_angle = branch_angle_at(search_x - middle_base_x, search_y - top_y, typical=True)
                     new_branch = Branch(search_x, search_y, branch_length, branch_angle)
@@ -500,22 +501,27 @@ def draw_tree(board: Board, x, y, width, height):
                     elif shorten:
                         # try to shorten the branch
                         branch_angle = branch_angle_at(search_x - middle_base_x, search_y - top_y, typical=False)
-                        new_branch = Branch(search_x, search_y, branch_length * (2/3), branch_angle,
-                                            branch_needle_ratio=3/2)
+                        new_branch = Branch(search_x, search_y, branch_length * (2 / 3), branch_angle,
+                                            branch_needle_ratio=3 / 2)
                         if not branch_will_overlap_existing(new_branch, allow_some_overlap=True):
                             add_branch(new_branch)
                         else:
                             # try to shorten the branch
-                            new_branch = Branch(search_x, search_y, branch_length * (1/2), branch_angle,
+                            new_branch = Branch(search_x, search_y, branch_length * (1 / 2), branch_angle,
                                                 branch_needle_ratio=2)
                             if not branch_will_overlap_existing(new_branch, allow_some_overlap=True):
                                 add_branch(new_branch)
 
-    populate_with_branches(0.1*width, 0.25, shorten=False)
+    print(f"\nplotting tree branches at edges")
+    populate_with_branches(0.1 * width, 0.25, shorten=False)
 
-    populate_with_branches(0.3*width, 0.75, shorten=True)
+    print(f"\nplotting tree branches in next layer")
+    populate_with_branches(0.3 * width, 0.75, shorten=True)
 
-    populate_with_branches(0.5*width, 0.9, shorten=True)
+    print(f"\nplotting tree branches in middle")
+    populate_with_branches(0.5 * width, 0.9, shorten=True)
+
+    print(f"\nmaking baubles")
 
     for branch in branches:
         board.ds("tree", branch.instructions)
@@ -531,7 +537,7 @@ def draw_tree(board: Board, x, y, width, height):
 
             search_y = random.randint(int(top_y + top_branch_length), int(middle_base_y))
 
-            ratio = (search_y-top_y) / height
+            ratio = (search_y - top_y) / height
             left_edge = middle_base_x - (width / 2) * ratio
             right_edge = middle_base_x + (width / 2) * ratio
             search_x = random.randint(int(left_edge), int(right_edge))
@@ -561,7 +567,6 @@ def draw():
     # some initial instructions
     board.d("tree", py5.no_fill)
 
-    board.d("baubles", py5.no_fill)
     board.d("baubles", py5.stroke, 255, 50, 50)
 
     board.d("debug", py5.no_fill)
@@ -579,6 +584,21 @@ def draw():
         for instruction in board.instructions(layer):
             instruction[0](*instruction[1])
         py5.end_record()
+
+    print("Combining SVGs")
+
+    combine_svgs(
+        {'1-tree': 'tree.svg',
+         '2-baubles': 'baubles.svg'
+         },
+        'combined.svg')
+
+    print("Post-processing combined SVG")
+
+    vpype_cli.execute("read combined.svg "
+                      "occult -a "
+                      "linesort --no-flip "
+                      "write combined-processed.svg")
 
     # close the sketch
     py5.exit_sketch()
