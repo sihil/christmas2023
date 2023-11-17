@@ -553,16 +553,19 @@ def draw_tree(board: Board, x, y, width, height):
         board.ds("baubles", bauble.instructions())
 
 
-def draw_cockerel(board: Board, x: float, y: float, width: float):
+def draw_cockerel(board: Board, x: float, y: float, width: float, flip: bool):
     scaling = width / cockerel.get_width()
     print(f"scaling: {scaling}")
+
+    flipping_multiplier = -1 if flip else 1
+    cockerel.scale(flipping_multiplier, 1)
 
     # put in a debug circle to align the stand
     # board.d("debug", py5.ellipse, x, y, 10, 10)
 
-    board.d("cockerel", py5.scale, scaling)
+    board.d("cockerel", py5.scale, scaling, scaling)
     # the x,y given is a location for the bottom of the cockerel stand
-    top_x = x/scaling - cockerel.get_width() * 0.4
+    top_x = x/scaling - cockerel.get_width() * 0.4 * flipping_multiplier
     top_y = y/scaling - cockerel.get_height() * 0.8
     board.d("cockerel", py5.shape, cockerel, top_x, top_y)
 
@@ -592,7 +595,7 @@ def draw():
     # draw the tree
     draw_tree(board, 100, 100, 300, 500)
 
-    draw_cockerel(board, 250, 100, 75)
+    draw_cockerel(board, 250, 100, 75, flip=py5.random_choice([True, False]))
 
     # debug: print out the instructions for the tree layer
     board.print_instructions_for_layer("cockerel")
