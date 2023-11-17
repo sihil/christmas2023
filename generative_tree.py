@@ -313,13 +313,14 @@ class Branch:
     def will_overlap(self, branch: 'Branch') -> bool:
         return self.polygon.intersects(branch.polygon)
 
-    def will_overlap_a_lot(self, branch: 'Branch') -> bool:
-        # returns true if the overlap is more than 20% of the area of this branch or the other branch
+    def will_overlap_a_lot(self, branch: 'Branch', threshold: int) -> bool:
+        # returns true if the overlap is more than threshold% of the area of this branch or the other branch
         if not self.will_overlap(branch):
             return False
         try:
             area = self.polygon.intersection(branch.polygon).area
-            return area > 0.10 * self.polygon.area or area > 0.10 * branch.polygon.area
+            threshold_multiplier = threshold / 100
+            return area > threshold_multiplier * self.polygon.area or area > threshold_multiplier * branch.polygon.area
         except GEOSException:
             # this means the intersection could not be created because the polygons are too close together
             return True
@@ -360,7 +361,7 @@ class Bauble:
         ]
 
 
-def combine_svgs(layers: Dict[str, str], new_svg: str):
+def combine_svgs(layers: List[Tuple[str, str]], new_svg: str):
     py5.begin_record(py5.SVG, new_svg)
     py5.end_record()
     ElementTree.register_namespace('', 'http://www.w3.org/2000/svg')
@@ -369,7 +370,7 @@ def combine_svgs(layers: Dict[str, str], new_svg: str):
     combined.set('xmlns:inkscape',
                  'http://www.inkscape.org/namespaces/inkscape')
 
-    for name, svg in layers.items():
+    for name, svg in layers:
         markup = ElementTree.parse(svg).getroot()
         group = ElementTree.SubElement(combined, 'g')
         group.set('id', name)
@@ -465,7 +466,7 @@ def draw_tree(board: Board, x, y, width, height):
     def branch_will_overlap_existing(b: Branch, allow_some_overlap=False):
         shortlist = spatial_hash.query_shape(b)
         if allow_some_overlap:
-            return any([b.will_overlap_a_lot(existing) for existing in shortlist])
+            return any([b.will_overlap_a_lot(existing, threshold=5) for existing in shortlist])
         return any([b.will_overlap(existing) for existing in shortlist])
 
     # new strategy
@@ -552,12 +553,28 @@ def draw_tree(board: Board, x, y, width, height):
         board.ds("baubles", bauble.instructions())
 
 
+def draw_cockerel(board: Board, x: float, y: float, width: float):
+    scaling = width / cockerel.get_width()
+    print(f"scaling: {scaling}")
+
+    # put in a debug circle to align the stand
+    # board.d("debug", py5.ellipse, x, y, 10, 10)
+
+    board.d("cockerel", py5.scale, scaling)
+    # the x,y given is a location for the bottom of the cockerel stand
+    top_x = x/scaling - cockerel.get_width() * 0.4
+    top_y = y/scaling - cockerel.get_height() * 0.8
+    board.d("cockerel", py5.shape, cockerel, top_x, top_y)
+
+
 def settings():
     py5.size(500, 700)
 
 
 def setup():
+    global cockerel
     py5.random_seed(1234567)
+    cockerel = py5.load_shape("cockerel-source.svg")
 
 
 def draw():
@@ -575,8 +592,10 @@ def draw():
     # draw the tree
     draw_tree(board, 100, 100, 300, 500)
 
+    draw_cockerel(board, 250, 100, 75)
+
     # debug: print out the instructions for the tree layer
-    board.print_instructions_for_layer("baubles")
+    board.print_instructions_for_layer("cockerel")
 
     # now actually write each layer into an SVG file
     for layer in board.layers():
@@ -588,9 +607,11 @@ def draw():
     print("Combining SVGs")
 
     combine_svgs(
-        {'1-tree': 'tree.svg',
-         '2-baubles': 'baubles.svg'
-         },
+        [
+            ('1-cockerel', 'cockerel.svg'),
+            ('2-tree', 'tree.svg'),
+            ('3-baubles', 'baubles.svg'),
+        ],
         'combined.svg')
 
     print("Post-processing combined SVG")
