@@ -355,7 +355,7 @@ class Bauble:
         return [(self.x, self.y)]
 
     def instructions(self) -> List[Instruction]:
-        radii = list(range(self.radius, 0, -2))
+        radii = reversed(list(range(self.radius, 0, -2)))
         return [
             instr(py5.ellipse, self.x, self.y, r, r) for r in radii
         ]
@@ -618,7 +618,7 @@ def draw():
 
     vpype_cli.execute("read combined.svg "
                       "occult -a "
-                      "linesort --no-flip "
+                      "linesort --layer 1,2 --no-flip "
                       "write combined-processed.svg")
 
     # close the sketch
