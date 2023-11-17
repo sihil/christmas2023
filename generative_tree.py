@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from typing import Optional, Callable, List, Tuple, Dict, Set, Protocol
 from xml.etree import ElementTree
@@ -6,6 +8,11 @@ import random
 import py5
 import vpype_cli
 from shapely import Polygon, GEOSException
+from vpype import text_line, FONT_NAMES
+
+
+seed = 123456
+pixels_per_mm = 3.7795275591
 
 
 class SpatialShape(Protocol):
@@ -385,13 +392,17 @@ def combine_svgs(layers: List[Tuple[str, str]], new_svg: str):
     tree.write(new_svg)
 
 
-def draw_tree(board: Board, x, y, width, height):
+def draw_tree(board: Board, x, y, width, height, density=1.0):
     # draw the branches of a tree, we don't need to draw a trunk - leave that to the immagination
     # essentially we want to draw the typical branches of a tree; starting in the middle and branching outwards
     # towards the bottom of the tree the branches should be longer and more horizontal, towards the top they should
     # be shorter and more vertical
     # the entire bound of the three should be an isosceles triangle with the top point at the top of the tree
     # and the base at the bottom of the tree
+
+    # density is the number of branches,
+    # if it is increased then the tree is more detailed,
+    # if decreased then less detailed
     middle_base_x, middle_base_y = x + width / 2, y + height
     top_x, top_y = x + width / 2, y
 
@@ -404,12 +415,16 @@ def draw_tree(board: Board, x, y, width, height):
     board.d("debug", py5.vertex, x + width, middle_base_y)
     board.d("debug", py5.end_shape, py5.CLOSE)
 
+    resolution = 30 * density
+
+    jump_pixels = int(width / resolution)
+
     def typical_branch_length(branch_y):
         # branch_y is the distance from the top of the tree
 
         # longer branches at the bottom, shorter branches at the top
         # 0.1*height at top to 0.18*height at bottom
-        return 0.1 * height + 0.04 * height * (branch_y / height)
+        return (0.1 * height + 0.04 * height * (branch_y / height)) / density
 
     def branch_angle_at(branch_x: float, branch_y: float, typical: bool) -> float:
         # branch_y is the distance from the top of the tree
@@ -451,7 +466,7 @@ def draw_tree(board: Board, x, y, width, height):
 
     top_branch_length = typical_branch_length(0)
 
-    spatial_hash = SpatialHash(10)
+    spatial_hash = SpatialHash(jump_pixels)
 
     branches = [
         # Branch(top_x, top_y + top_branch_length, top_branch_length,
@@ -481,16 +496,16 @@ def draw_tree(board: Board, x, y, width, height):
 
     # 1 a/b.
     def populate_with_branches(edge_size: float, fill_prob: float, shorten: bool):
-        for search_y in range(int(top_y + top_branch_length), int(middle_base_y), 10):
+        for search_y in range(int(top_y + top_branch_length), int(middle_base_y), jump_pixels):
             ratio = (search_y - top_y) / height
             left_edge = middle_base_x - (width / 2) * ratio
             right_edge = middle_base_x + (width / 2) * ratio
             width_at_y = right_edge - left_edge
             if width_at_y < edge_size * 2 or search_y > middle_base_y - edge_size:
-                x_range_at_y = range(int(left_edge), int(right_edge), 10)
+                x_range_at_y = range(int(left_edge), int(right_edge), jump_pixels)
             else:
-                x_range_at_y = (*range(int(left_edge), int(left_edge + edge_size), 10),
-                                *range(int(right_edge - edge_size), int(right_edge), 10))
+                x_range_at_y = (*range(int(left_edge), int(left_edge + edge_size), jump_pixels),
+                                *range(int(right_edge - edge_size), int(right_edge), jump_pixels))
             for search_x in x_range_at_y:
                 if py5.random() < fill_prob:  # one time in four try to add a branch here
                     print(".", end="")
@@ -534,8 +549,19 @@ def draw_tree(board: Board, x, y, width, height):
     def make_baubles() -> List[Bauble]:
         baubles: List[Bauble] = []
 
-        while len(baubles) < py5.random_int(8, 11):
+        # roughly how many baubles can we place? (based on the size of the tree)
+        min_distance = (width / 4.5) / density
+        area = width * height * 0.5
+        bauble_area = py5.PI * (min_distance/2)**2
+        max = area / bauble_area
+        print(f"max baubles: {max}")
+        aim = int(max * py5.random(0.6, 0.8))
+        print(f"aim baubles: {aim}")
 
+        attempt = 0
+
+        while len(baubles) <= aim and attempt < aim*100:
+            attempt += 1
             search_y = random.randint(int(top_y + top_branch_length), int(middle_base_y))
 
             ratio = (search_y - top_y) / height
@@ -543,8 +569,8 @@ def draw_tree(board: Board, x, y, width, height):
             right_edge = middle_base_x + (width / 2) * ratio
             search_x = random.randint(int(left_edge), int(right_edge))
 
-            # is there another bauble within 50 pixels?
-            if not any([py5.dist(search_x, search_y, b.x, b.y) < 75 for b in baubles]):
+            # is there another bauble within the min distance?
+            if not any([py5.dist(search_x, search_y, b.x, b.y) < min_distance for b in baubles]):
                 baubles.append(Bauble(search_x, search_y, 18))
 
         return baubles
@@ -570,13 +596,43 @@ def draw_cockerel(board: Board, x: float, y: float, width: float, flip: bool):
     board.d("cockerel", py5.shape, cockerel, top_x, top_y)
 
 
+def plot_text(board, layer: str, x, y, text_lines):
+    for line in text_lines.as_mls().geoms:
+        coords = list(line.coords)
+        if len(coords) == 2:
+            x1, y1 = coords[0]
+            x2, y2 = coords[1]
+            board.d(layer, py5.line, x + x1, y + y1, x + x2, y + y2)
+        else:
+            board.d(layer, py5.begin_shape)
+            for x1, y1 in coords:
+                board.d(layer, py5.vertex, x + x1, y + y1)
+            board.d(layer, py5.end_shape)
+
+
+def draw_merry_christmas(board: Board, x: float, y: float, font_name: str = "futural"):
+    text_lines = text_line("Merry Christmas", align="center", font_name=font_name, size=35)
+    plot_text(board, "merry-christmas", x, y, text_lines)
+
+
+def draw_credit(board: Board, x: float, y: float, git_commit: str, font_name: str = "futural"):
+    text_lines = text_line(f"Design by Simon Hildrew | Card seed {seed}/{git_commit}", align="center", font_name=font_name, size=10)
+    plot_text(board, "credits", x, y, text_lines)
+
+
 def settings():
-    py5.size(500, 700)
+    # size in px
+    width_mm = 210
+    height_mm = 148
+    py5.size(int(width_mm * pixels_per_mm), int(height_mm * pixels_per_mm))
 
 
 def setup():
-    global cockerel
-    py5.random_seed(1234567)
+    global cockerel, seed
+    if not seed:
+        seed = py5.random_int(10000, 999999)
+    print(f"seed: {seed}")
+    py5.random_seed(seed)
     cockerel = py5.load_shape("cockerel-source.svg")
 
 
@@ -584,18 +640,43 @@ def draw():
     # initialise a board which will hold multiple layers of instructions
     board = Board()
 
+    border = 0.08 * py5.height
+    top = border
+    bottom = py5.height - border
+    front_left = py5.width/2 + border
+    front_right = py5.width - border
+    front_middle_x = py5.width * 3/4
+    front_middle_y = py5.height / 2
+
     # some initial instructions
     board.d("tree", py5.no_fill)
 
-    board.d("baubles", py5.stroke, 255, 50, 50)
+    board.d("baubles", py5.stroke, 255, 50, 50)  # red
+
+    board.d("cockerel", py5.no_fill)
+    board.d("cockerel", py5.stroke, 212, 175, 55)  # gold
 
     board.d("debug", py5.no_fill)
-    board.d("debug", py5.stroke, 50, 50, 255)
+    board.d("debug", py5.stroke, 50, 50, 255)  # blue
+    board.d("debug", py5.rect, front_left, top, front_right-front_left, bottom-top)
+    board.d("debug", py5.line, py5.width/2, 0, py5.width/2, py5.height)
+
+    board.d("merry-christmas", py5.no_fill)
+    board.d("merry-christmas", py5.stroke, 212, 175, 55)  # gold
+    board.d("credits", py5.no_fill)
 
     # draw the tree
-    draw_tree(board, 100, 100, 300, 500)
+    draw_tree(board,
+              front_left+border, top+border,
+              front_right - front_left - border*2, bottom-top - border*2.5,
+              density=0.8)
 
-    draw_cockerel(board, 250, 100, 75, flip=py5.random_choice([True, False]))
+    draw_cockerel(board, front_middle_x, top+(front_right-front_left)*0.2, (front_right-front_left)*0.2, flip=py5.random_choice([True, False]))
+
+    draw_merry_christmas(board, front_middle_x, bottom - 12, font_name='scriptc')
+
+    git_commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
+    draw_credit(board, py5.width/4, py5.height*0.9, git_commit)
 
     # debug: print out the instructions for the tree layer
     board.print_instructions_for_layer("cockerel")
@@ -614,15 +695,22 @@ def draw():
             ('1-cockerel', 'cockerel.svg'),
             ('2-tree', 'tree.svg'),
             ('3-baubles', 'baubles.svg'),
+            ('1-merry-christmas', 'merry-christmas.svg'),
+            ('2-credits', 'credits.svg'),
+            ('9-debug', 'debug.svg'),
         ],
         'combined.svg')
 
     print("Post-processing combined SVG")
 
     vpype_cli.execute("read combined.svg "
-                      "occult -a "
-                      "linesort --layer 1,2 --no-flip "
-                      "write combined-processed.svg")
+                      f"scaleto 210mm 148mm "
+                      "occult --layer 2,3 -a "
+                      "linesort --layer 2,3 --no-flip "
+                      f"write combined-processed.svg")
+
+    # copy file to seed indexed version
+    shutil.copyfile("combined-processed.svg", f"combined-processed-{seed}-{git_commit}.svg")
 
     # close the sketch
     py5.exit_sketch()
