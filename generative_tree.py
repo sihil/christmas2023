@@ -1,5 +1,7 @@
+import argparse
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import Optional, Callable, List, Tuple, Dict, Set, Protocol
 from xml.etree import ElementTree
@@ -11,7 +13,16 @@ from shapely import Polygon, GEOSException
 from vpype import text_line, FONT_NAMES
 
 
-seed = 123456
+parser = argparse.ArgumentParser(
+    prog='GenerativeTree',
+    description='Generates a christmas tree card')
+parser.add_argument('--svg-std-out', dest='svg_std_out', action='store_true', help='output svg to stdout')
+parser.add_argument('--seed', type=int, help='seed for random number generator')
+
+args = parser.parse_args(args=sys.argv[1:])
+print(args, file=sys.stderr)
+
+seed = args.seed
 pixels_per_mm = 3.7795275591
 
 
@@ -98,7 +109,7 @@ class Board:
 
     def print_instructions_for_layer(self, layer: str):
         for instruction in self.instructions(layer):
-            print(instruction)
+            print(instruction, file=sys.stderr)
 
 
 @dataclass
@@ -476,7 +487,7 @@ def draw_tree(board: Board, x, y, width, height, density=1.0):
     def add_branch(b: Branch):
         branches.append(b)
         spatial_hash.insert_shape(b)
-        print("|", end="")
+        print("|", end="", file=sys.stderr)
 
     def branch_will_overlap_existing(b: Branch, allow_some_overlap=False):
         shortlist = spatial_hash.query_shape(b)
@@ -508,7 +519,7 @@ def draw_tree(board: Board, x, y, width, height, density=1.0):
                                 *range(int(right_edge - edge_size), int(right_edge), jump_pixels))
             for search_x in x_range_at_y:
                 if py5.random() < fill_prob:  # one time in four try to add a branch here
-                    print(".", end="")
+                    print(".", end="", file=sys.stderr)
                     branch_length = typical_branch_length(search_y - top_y)
                     branch_angle = branch_angle_at(search_x - middle_base_x, search_y - top_y, typical=True)
                     new_branch = Branch(search_x, search_y, branch_length, branch_angle)
@@ -528,16 +539,16 @@ def draw_tree(board: Board, x, y, width, height, density=1.0):
                             if not branch_will_overlap_existing(new_branch, allow_some_overlap=True):
                                 add_branch(new_branch)
 
-    print(f"\nplotting tree branches at edges")
+    print(f"\nplotting tree branches at edges", file=sys.stderr)
     populate_with_branches(0.1 * width, 0.25, shorten=False)
 
-    print(f"\nplotting tree branches in next layer")
+    print(f"\nplotting tree branches in next layer", file=sys.stderr)
     populate_with_branches(0.3 * width, 0.75, shorten=True)
 
-    print(f"\nplotting tree branches in middle")
+    print(f"\nplotting tree branches in middle", file=sys.stderr)
     populate_with_branches(0.5 * width, 0.9, shorten=True)
 
-    print(f"\nmaking baubles")
+    print(f"\nmaking baubles", file=sys.stderr)
 
     for branch in branches:
         board.ds("tree", branch.instructions)
@@ -554,9 +565,9 @@ def draw_tree(board: Board, x, y, width, height, density=1.0):
         area = width * height * 0.5
         bauble_area = py5.PI * (min_distance/2)**2
         max = area / bauble_area
-        print(f"max baubles: {max}")
+        print(f"max baubles: {max}", file=sys.stderr)
         aim = int(max * py5.random(0.6, 0.8))
-        print(f"aim baubles: {aim}")
+        print(f"aim baubles: {aim}", file=sys.stderr)
 
         attempt = 0
 
@@ -581,7 +592,7 @@ def draw_tree(board: Board, x, y, width, height, density=1.0):
 
 def draw_cockerel(board: Board, x: float, y: float, width: float, flip: bool):
     scaling = width / cockerel.get_width()
-    print(f"scaling: {scaling}")
+    print(f"scaling: {scaling}", file=sys.stderr)
 
     flipping_multiplier = -1 if flip else 1
     cockerel.scale(flipping_multiplier, 1)
@@ -631,7 +642,7 @@ def setup():
     global cockerel, seed
     if not seed:
         seed = py5.random_int(10000, 999999)
-    print(f"seed: {seed}")
+    print(f"seed: {seed}", file=sys.stderr)
     py5.random_seed(seed)
     cockerel = py5.load_shape("cockerel-source.svg")
 
@@ -688,7 +699,7 @@ def draw():
             instruction[0](*instruction[1])
         py5.end_record()
 
-    print("Combining SVGs")
+    print("Combining SVGs", file=sys.stderr)
 
     combine_svgs(
         [
@@ -701,16 +712,22 @@ def draw():
         ],
         'combined.svg')
 
-    print("Post-processing combined SVG")
+    print("Post-processing combined SVG", file=sys.stderr)
 
     vpype_cli.execute("read combined.svg "
                       f"scaleto 210mm 148mm "
                       "occult --layer 2,3 -a "
-                      "linesort --layer 2,3 --no-flip "
+                      "linesort --layer 1,2,4,5 --no-flip "
                       f"write combined-processed.svg")
 
     # copy file to seed indexed version
-    shutil.copyfile("combined-processed.svg", f"combined-processed-{seed}-{git_commit}.svg")
+    indexed_file_name = f"combined-processed-{seed}-{git_commit}.svg"
+    shutil.copyfile("combined-processed.svg", indexed_file_name)
+
+    if args.svg_std_out:
+        # print the svg to stdout
+        with open("combined-processed.svg", "r") as f:
+            print(f.read())
 
     # close the sketch
     py5.exit_sketch()
