@@ -2,10 +2,16 @@ import subprocess
 
 import vpype_cli
 
-number = 2
+number = 4
 
 if number not in [2,4]:
     raise ValueError("number must be 2 or 4")
+
+# make directory if it doesn't exist
+subprocess.Popen(
+    ["mkdir", "-p", "output/grid"],
+    stdout=subprocess.PIPE
+)
 
 for i in range(number):
     # execute the generative_tree.py script a number of times

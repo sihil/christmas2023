@@ -418,9 +418,6 @@ def draw_tree(board: Board, x, y, width, height, density=1.0):
     middle_base_x, middle_base_y = x + width / 2, y + height
     top_x, top_y = x + width / 2, y
 
-    board.d("tree", py5.text, "mb", middle_base_x, middle_base_y)
-    board.d("tree", py5.text, "top", top_x, top_y)
-
     board.d("debug", py5.begin_shape)
     board.d("debug", py5.vertex, top_x, top_y)
     board.d("debug", py5.vertex, x, middle_base_y)
