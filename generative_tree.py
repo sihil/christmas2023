@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser(
     prog='GenerativeTree',
     description='Generates a christmas tree card')
 parser.add_argument('--svg-std-out', dest='svg_std_out', action='store_true', help='output svg to stdout')
+parser.add_argument('--mc-font', dest='mc_font', help='name of font to use for the merry christmas text')
 parser.add_argument('--seed', type=int, help='seed for random number generator')
 
 args = parser.parse_args(args=sys.argv[1:])
@@ -621,13 +622,16 @@ def plot_text(board, layer: str, x, y, text_lines):
             board.d(layer, py5.end_shape)
 
 
-def draw_merry_christmas(board: Board, x: float, y: float, font_name: str = "futural"):
-    text_lines = text_line("Merry Christmas", align="center", font_name=font_name, size=35)
-    plot_text(board, "merry-christmas", x, y, text_lines)
+def draw_merry_christmas(board: Board, x: float, y: float):
+    board.d("merry-christmas",
+            py5.shape,
+            merry_christmas,
+            x - merry_christmas.get_width()/2,
+            y - merry_christmas.get_height()/2)
 
 
 def draw_credit(board: Board, x: float, y: float, git_commit: str, font_name: str = "futural"):
-    text_lines = text_line(f"Design by Simon Hildrew | Card seed {seed}/{git_commit}", align="center", font_name=font_name, size=10)
+    text_lines = text_line(f"Design by Simon Hildrew | Unique card #{seed}/{git_commit}", align="center", font_name=font_name, size=10)
     plot_text(board, "credits", x, y, text_lines)
 
 
@@ -639,12 +643,13 @@ def settings():
 
 
 def setup():
-    global cockerel, seed
+    global cockerel, merry_christmas, seed
     if not seed:
         seed = py5.random_int(10000, 999999)
     print(f"seed: {seed}", file=sys.stderr)
     py5.random_seed(seed)
-    cockerel = py5.load_shape("cockerel-source.svg")
+    cockerel = py5.load_shape("resources/cockerel-source.svg")
+    merry_christmas = py5.load_shape(f"resources/allure-smooth.svg")
 
 
 def draw():
@@ -684,17 +689,17 @@ def draw():
 
     draw_cockerel(board, front_middle_x, top+(front_right-front_left)*0.2, (front_right-front_left)*0.2, flip=py5.random_choice([True, False]))
 
-    draw_merry_christmas(board, front_middle_x, bottom - 12, font_name='scriptc')
+    draw_merry_christmas(board, front_middle_x, bottom-6)
 
     git_commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode('ascii').strip()
     draw_credit(board, py5.width/4, py5.height*0.9, git_commit)
 
     # debug: print out the instructions for the tree layer
-    board.print_instructions_for_layer("cockerel")
+    #board.print_instructions_for_layer("cockerel")
 
     # now actually write each layer into an SVG file
     for layer in board.layers():
-        py5.begin_record(py5.SVG, f'{layer}.svg')
+        py5.begin_record(py5.SVG, f'output/layers/{layer}.svg')
         for instruction in board.instructions(layer):
             instruction[0](*instruction[1])
         py5.end_record()
@@ -703,30 +708,30 @@ def draw():
 
     combine_svgs(
         [
-            ('1-cockerel', 'cockerel.svg'),
-            ('2-tree', 'tree.svg'),
-            ('3-baubles', 'baubles.svg'),
-            ('1-merry-christmas', 'merry-christmas.svg'),
-            ('2-credits', 'credits.svg'),
-            ('9-debug', 'debug.svg'),
+            ('1-cockerel', 'output/layers/cockerel.svg'),
+            ('2-tree', 'output/layers/tree.svg'),
+            ('3-baubles', 'output/layers/baubles.svg'),
+            ('1-merry-christmas', 'output/layers/merry-christmas.svg'),
+            ('2-credits', 'output/layers/credits.svg'),
+            ('9-debug', 'output/layers/debug.svg'),
         ],
-        'combined.svg')
+        'output/post-processing/combined.svg')
 
     print("Post-processing combined SVG", file=sys.stderr)
 
-    vpype_cli.execute("read combined.svg "
+    vpype_cli.execute("read output/post-processing/combined.svg "
                       f"scaleto 210mm 148mm "
                       "occult --layer 2,3 -a "
                       "linesort --layer 1,2,4,5 --no-flip "
-                      f"write combined-processed.svg")
+                      f"write output/post-processing/optimised.svg")
 
     # copy file to seed indexed version
-    indexed_file_name = f"combined-processed-{seed}-{git_commit}.svg"
-    shutil.copyfile("combined-processed.svg", indexed_file_name)
+    indexed_file_name = f"output/post-processing/optimised-{seed}-{git_commit}.svg"
+    shutil.copyfile("output/post-processing/optimised.svg", indexed_file_name)
 
     if args.svg_std_out:
         # print the svg to stdout
-        with open("combined-processed.svg", "r") as f:
+        with open("output/post-processing/optimised.svg", "r") as f:
             print(f.read())
 
     # close the sketch
