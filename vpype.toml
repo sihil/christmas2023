@@ -1,0 +1,20 @@
+[gwrite.idraw2]
+# a set of configuration parameters for the idraw v2.0
+# these have largely been derived by monitoring how the inkscape
+# idraw software communicates with the plotter
+unit = "mm"
+vertical_flip = true
+# set to mm, then ensure the pen is lifted and set the pen up speed
+document_start = """G21\nG92 X0 Y0\nG1G90 Z0.5F20000\nG1 F8000\n"""
+
+# travel to the start of a segment using relative coords then
+# lower a pen to absolute position z=5 and reconfigure the speed to 2000
+segment_first = """G1G91X{_dx:.3f}Y{_dy:.3f}\nG1G90 Z5.0F5000\nG1 F2000\n"""
+# move to relative position
+segment = "G1G91X{_dx:.3f}Y{_dy:.3f}\n"
+# move to relative position then
+# lift a pen to absolute position z=0.5 and reconfigure the speed to 8000
+segment_last = """G1G91X{_dx:.3f}Y{_dy:.3f}\nG1G90 Z0.5F20000\nG1 F8000\n"""
+
+# at the end of the document, move to the home position and then sleep
+document_end = """G90G0 X0 Y0\n$SLP\n"""
