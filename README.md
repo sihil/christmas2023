@@ -48,6 +48,19 @@ The design is intended to be plotted on dark card (I used a dark green). The lay
   - Layer 3: This is the baubles on the tree. You can use any colour you like, I'm using a red glitter gelly roll pen, although I've found that plotting this in white first and then going over it with the red glitter pen gives a better result.
 
 
+This is the (rendered) output of a single combined and optimised A6 size folded card (A5 front and back):
+
+![A single card](readme/example-optimised.png)
+
+This is four cards assembled to fill the A3 size of my plotter:
+
+![Four cards assembed into a grid](readme/example-combined-grid.png)
+
+This is a photograph of a final version plotted with the gold, white and red pens described above:
+
+![Photo of final card](readme/final-card.jpeg)
+
+
 General stuff about the iDraw v2.0 plotter
 ------------------------------------------
 
