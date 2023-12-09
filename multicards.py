@@ -45,5 +45,5 @@ vpype_cli.execute(f"""
 vpype_cli.execute(f"""
     read output/grid/combined-grid.svg
     pagerotate
-    forlayer gwrite --profile idraw2 "output/grid/combined-grid-%_name%.gcode" end
-""", global_opt="--config vpype.toml")  # note that we use a config file here to define the idraw2 profile
+    forlayer gwrite --profile idraw_v2 "output/grid/combined-grid-%_name%.gcode" end
+""", global_opt="--config vpype.toml")  # note that we use a config file here to define the idraw_v2 profile
