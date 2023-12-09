@@ -12,4 +12,4 @@ fi
 LINES=$(wc -l < "${FILE}")
 
 # now plot with a progress bar
-pv -B 32 -l -s "${LINES}" -pte "${FILE}" | gcode-cli/gcode-cli -qq -
+gcode-cli/gcode-cli "$FILE" 2>&1 | grep "<< OK" | pv -W -l -s "${LINES}" -pte > /dev/null
